@@ -7,7 +7,7 @@ export const MAX_ACCOUNTS_PER_BROWSER = 10;
 export const MIN_PASSWORD_LENGTH = 8;
 export const MAX_NAME_LENGTH = 60;
 
-const DEV_FALLBACK_SECRET = "ac-panget-local-dev-secret-change-me";
+const DEV_FALLBACK_SECRET = "logsigntest-local-dev-secret-change-me";
 
 export function getAuthSecret(): string {
   const secret = process.env.AUTH_SECRET;
