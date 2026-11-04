@@ -1,0 +1,452 @@
+:root {
+  --field: #0b3d5c;
+  --field-raised: #0e4a6f;
+  --ink: #ffffff;
+  --ink-soft: #c4dbe9;
+  --ink-muted: #9dbfd3;
+  --rule: rgb(255 255 255 / 0.16);
+  --accent: #7fc4e8;
+  --accent-hover: #a6d8f2;
+  --accent-ink: #062a40;
+  --error: #ffb4ae;
+  --error-wash: rgb(255 180 174 / 0.12);
+  --input-bg: #ffffff;
+  --input-bg-hover: #f2f8fc;
+  --input-ink: #0b2233;
+  --input-icon: #4a6577;
+
+  --font-sans: var(--font-grotesk), "Segoe UI", system-ui, sans-serif;
+  --radius: 4px;
+  --gutter: clamp(20px, 4vw, 56px);
+  --column: 360px;
+  --field-gap: 20px;
+  --control-height: 50px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --reveal-duration: 380ms;
+
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scrollbar-color: rgb(255 255 255 / 0.3) var(--field);
+}
+
+body {
+  margin: 0;
+  background: var(--field);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+/* Screen: the whole viewport is one logon field */
+
+.screen {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 1fr min(var(--column), 100%) 1fr;
+  grid-template-rows: auto 1fr auto;
+  row-gap: 40px;
+  padding: var(--gutter);
+}
+
+.wordmark {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: clamp(2.25rem, 1.1rem + 4.2vw, 4.5rem);
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+}
+
+.panel {
+  grid-column: 2;
+  align-self: center;
+  width: 100%;
+}
+
+.clock {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 5.5rem;
+  justify-content: flex-end;
+}
+
+.clock-time {
+  font-size: clamp(2.25rem, 1.5rem + 2.6vw, 4rem);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.clock-date {
+  color: var(--ink-soft);
+}
+
+/* Auth form */
+
+.auth-header {
+  margin-bottom: 28px;
+}
+
+.auth-heading,
+.welcome-heading {
+  margin: 0;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.auth-heading {
+  font-size: 1.875rem;
+  animation: heading-in 420ms var(--ease-out) both;
+}
+
+.auth-lede {
+  margin: 8px 0 0;
+  color: var(--ink-soft);
+}
+
+.auth-form > :not(:first-child) {
+  margin-top: var(--field-gap);
+}
+
+.form-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--error-wash);
+  color: var(--error);
+  font-size: 0.9375rem;
+  outline: none;
+}
+
+.form-error-icon,
+.field-error-icon {
+  flex: none;
+  margin-top: 1px;
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.field-control {
+  position: relative;
+}
+
+.field-input {
+  display: block;
+  width: 100%;
+  height: var(--control-height);
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--input-bg);
+  color: var(--input-ink);
+  caret-color: var(--accent-ink);
+  font-size: 1rem;
+  transition: background-color 160ms ease-out;
+}
+
+.field-input[type="password"],
+.field-control:has(.reveal-toggle) .field-input {
+  padding-right: 52px;
+}
+
+.field-input:hover {
+  background: var(--input-bg-hover);
+}
+
+.field-input:focus {
+  outline: none;
+}
+
+.field-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.field-input[aria-invalid="true"] {
+  outline: 2px solid var(--error);
+  outline-offset: 2px;
+}
+
+.field-input::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.field-input:-webkit-autofill {
+  -webkit-text-fill-color: var(--input-ink);
+  box-shadow: 0 0 0 100px var(--input-bg) inset;
+}
+
+.reveal-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--input-icon);
+  cursor: pointer;
+}
+
+.reveal-toggle:hover {
+  color: var(--input-ink);
+  background: rgb(11 61 92 / 0.08);
+}
+
+.reveal-toggle:focus-visible {
+  outline: 2px solid var(--field);
+  outline-offset: -2px;
+}
+
+.field-error,
+.field-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 8px 0 0;
+  font-size: 0.875rem;
+}
+
+.field-error {
+  color: var(--error);
+}
+
+.field-hint {
+  color: var(--ink-muted);
+}
+
+/* Register-only fields grow into the column rather than popping in */
+
+.auth-form > .reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--reveal-duration) var(--ease-out),
+    margin-top var(--reveal-duration) var(--ease-out),
+    opacity 200ms ease-out;
+}
+
+.auth-form > .reveal[data-open="false"] {
+  margin-top: 0;
+}
+
+.auth-form > .reveal[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows var(--reveal-duration) var(--ease-out),
+    margin-top var(--reveal-duration) var(--ease-out),
+    opacity 320ms 80ms ease-out;
+}
+
+/* The padding/margin pair keeps focus outlines visible inside the clipping box. */
+.reveal-inner {
+  min-height: 0;
+  overflow: hidden;
+  padding: 4px;
+  margin: -4px;
+}
+
+/* Actions */
+
+.submit,
+.secondary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: var(--control-height);
+  padding: 0 18px;
+  border-radius: var(--radius);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease-out,
+    border-color 160ms ease-out,
+    transform 120ms ease-out;
+}
+
+.submit {
+  border: 0;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.auth-form > .submit {
+  margin-top: 28px;
+}
+
+.submit:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.submit-icon {
+  transition: transform 220ms var(--ease-out);
+}
+
+.submit:hover:not(:disabled) .submit-icon {
+  transform: translateX(3px);
+}
+
+.submit:active:not(:disabled),
+.secondary:active {
+  transform: scale(0.99);
+}
+
+.submit:disabled {
+  cursor: progress;
+  opacity: 0.8;
+}
+
+.submit:focus-visible,
+.secondary:focus-visible,
+.text-button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.secondary {
+  justify-content: center;
+  border: 1.5px solid rgb(255 255 255 / 0.55);
+  background: transparent;
+  color: var(--ink);
+}
+
+.secondary:hover {
+  border-color: var(--ink);
+  background: rgb(255 255 255 / 0.06);
+}
+
+.mode-switch {
+  margin: 28px 0 0;
+  color: var(--ink-soft);
+}
+
+.text-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.text-button:hover {
+  text-decoration-color: var(--ink);
+}
+
+/* Signed-in */
+
+.welcome-heading {
+  font-size: clamp(2rem, 1.5rem + 2vw, 2.75rem);
+  font-weight: 800;
+}
+
+.facts {
+  margin: 32px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.fact {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.fact dt {
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+}
+
+.fact dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+@keyframes heading-in {
+  from {
+    opacity: 0.35;
+    transform: translateY(6px);
+    filter: blur(3px);
+  }
+}
+
+@media (max-width: 640px) {
+  .screen {
+    grid-template-columns: 1fr;
+    row-gap: 36px;
+  }
+
+  .panel {
+    grid-column: 1;
+    align-self: start;
+  }
+
+  .clock {
+    min-height: 0;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 12px;
+  }
+
+  .clock-time {
+    font-size: 1.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+  }
+}
