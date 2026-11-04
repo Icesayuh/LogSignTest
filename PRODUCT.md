@@ -12,11 +12,11 @@ Next.js (App Router), deployed to Vercel; run locally first with `npm run dev`.
 
 ## Users
 
-People signing in to or registering for AC PANGET. The exact audience is not yet decided; the first use is testing sign-in through a third-party identity console.
+People signing in to or registering for LogSignTest. The exact audience is not yet decided; the first use is testing sign-in through a third-party identity console.
 
 ## Product Purpose
 
-A working sign-in and registration page for AC PANGET. It exists so MFA and Active Directory integration can be tested through a third-party identity console. Success: a person can register, sign in, see they are signed in, and sign out.
+A working sign-in and registration page for LogSignTest. It exists so MFA and Active Directory integration can be tested through a third-party identity console. Success: a person can register, sign in, see they are signed in, and sign out.
 
 ## Capabilities and Constraints
 
@@ -27,7 +27,7 @@ A working sign-in and registration page for AC PANGET. It exists so MFA and Acti
 
 ## Brand Commitments
 
-Name: AC PANGET (as given by the user). No logo, voice, or other brand assets exist yet.
+Name: LogSignTest (as given by the user). No logo, voice, or other brand assets exist yet.
 
 ## Evidence on Hand
 
