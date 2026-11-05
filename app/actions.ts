@@ -15,7 +15,7 @@ import {
 export type AuthFormState = {
   fieldErrors: FieldErrors;
   formError?: string;
-  values: { name: string; username: string; email: string };
+  values: { username: string; email: string };
 };
 
 const ACCOUNT_HOME = "/account";
@@ -28,7 +28,7 @@ function readText(formData: FormData, field: string): string {
 export async function signIn(_previous: AuthFormState, formData: FormData): Promise<AuthFormState> {
   const username = normalizeUsername(readText(formData, "username"));
   const password = readText(formData, "password");
-  const values = { name: "", username, email: "" };
+  const values = { username, email: "" };
 
   const fieldErrors = validateSignIn(username, password);
   if (hasErrors(fieldErrors)) return { fieldErrors, values };
@@ -42,14 +42,13 @@ export async function signIn(_previous: AuthFormState, formData: FormData): Prom
 }
 
 export async function register(_previous: AuthFormState, formData: FormData): Promise<AuthFormState> {
-  const name = readText(formData, "name").trim();
   const username = normalizeUsername(readText(formData, "username"));
   const email = normalizeEmail(readText(formData, "email"));
   const password = readText(formData, "password");
   const confirmPassword = readText(formData, "confirmPassword");
-  const values = { name, username, email };
+  const values = { username, email };
 
-  const fieldErrors = validateRegistration(name, username, email, password, confirmPassword);
+  const fieldErrors = validateRegistration(username, email, password, confirmPassword);
   if (hasErrors(fieldErrors)) return { fieldErrors, values };
 
   if (await accounts.findByUsername(username)) {
@@ -59,7 +58,7 @@ export async function register(_previous: AuthFormState, formData: FormData): Pr
     return { fieldErrors: { email: "An account with this email already exists. Sign in instead." }, values };
   }
 
-  const account = await accounts.create({ name, username, email, password });
+  const account = await accounts.create({ username, email, password });
   await startSession(account);
   redirect(ACCOUNT_HOME);
 }

@@ -5,14 +5,13 @@ import { hashPassword, seal, unseal, verifyPassword } from "./crypto";
 
 export type Account = {
   id: string;
-  name: string;
   username: string;
   email: string;
   passwordHash: string;
   createdAt: string;
 };
 
-export type NewAccount = { name: string; username: string; email: string; password: string };
+export type NewAccount = { username: string; email: string; password: string };
 
 // The page only talks to this interface, so an identity provider (Entra ID, Okta, Auth0)
 // can replace the store without touching the UI.
@@ -56,10 +55,9 @@ export const browserAccountStore: AccountStore = {
   findByUsername,
   findByEmail,
 
-  async create({ name, username, email, password }) {
+  async create({ username, email, password }) {
     const account: Account = {
       id: randomUUID(),
-      name,
       username,
       email,
       passwordHash: await hashPassword(password),
