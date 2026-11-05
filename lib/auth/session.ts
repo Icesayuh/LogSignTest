@@ -6,6 +6,7 @@ import { seal, unseal } from "./crypto";
 export type Session = {
   accountId: string;
   name: string;
+  username: string;
   email: string;
   accountCreatedAt: string;
   signedInAt: string;
@@ -16,6 +17,7 @@ export async function startSession(account: Account): Promise<void> {
   const session: Session = {
     accountId: account.id,
     name: account.name,
+    username: account.username,
     email: account.email,
     accountCreatedAt: account.createdAt,
     signedInAt: new Date().toISOString(),

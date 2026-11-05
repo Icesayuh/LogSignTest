@@ -6,19 +6,21 @@ import { hashPassword, seal, unseal, verifyPassword } from "./crypto";
 export type Account = {
   id: string;
   name: string;
+  username: string;
   email: string;
   passwordHash: string;
   createdAt: string;
 };
 
-export type NewAccount = { name: string; email: string; password: string };
+export type NewAccount = { name: string; username: string; email: string; password: string };
 
 // The page only talks to this interface, so an identity provider (Entra ID, Okta, Auth0)
 // can replace the store without touching the UI.
 export interface AccountStore {
+  findByUsername(username: string): Promise<Account | null>;
   findByEmail(email: string): Promise<Account | null>;
   create(input: NewAccount): Promise<Account>;
-  verify(email: string, password: string): Promise<Account | null>;
+  verify(username: string, password: string): Promise<Account | null>;
 }
 
 async function readAccounts(): Promise<Account[]> {
@@ -37,6 +39,11 @@ async function writeAccounts(accounts: Account[]): Promise<void> {
   });
 }
 
+async function findByUsername(username: string): Promise<Account | null> {
+  const accounts = await readAccounts();
+  return accounts.find((account) => account.username === username) ?? null;
+}
+
 async function findByEmail(email: string): Promise<Account | null> {
   const accounts = await readAccounts();
   return accounts.find((account) => account.email === email) ?? null;
@@ -46,12 +53,14 @@ async function findByEmail(email: string): Promise<Account | null> {
 // live sealed inside the registering browser's cookie: they work on Vercel with no
 // database, but only in the browser that created them.
 export const browserAccountStore: AccountStore = {
+  findByUsername,
   findByEmail,
 
-  async create({ name, email, password }) {
+  async create({ name, username, email, password }) {
     const account: Account = {
       id: randomUUID(),
       name,
+      username,
       email,
       passwordHash: await hashPassword(password),
       createdAt: new Date().toISOString(),
@@ -61,8 +70,8 @@ export const browserAccountStore: AccountStore = {
     return account;
   },
 
-  async verify(email, password) {
-    const account = await findByEmail(email);
+  async verify(username, password) {
+    const account = await findByUsername(username);
     if (!account) return null;
     return (await verifyPassword(password, account.passwordHash)) ? account : null;
   },

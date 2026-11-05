@@ -10,7 +10,7 @@ import { PRODUCT_NAME } from "@/lib/brand";
 
 export type AuthMode = "signin" | "register";
 
-const EMPTY_STATE: AuthFormState = { fieldErrors: {}, values: { name: "", email: "" } };
+const EMPTY_STATE: AuthFormState = { fieldErrors: {}, values: { name: "", username: "", email: "" } };
 const REGISTER_QUERY = "?mode=register";
 
 const COPY: Record<AuthMode, { heading: string; lede: string; submit: string; pending: string; switchPrompt: string; switchAction: string }> = {
@@ -106,14 +106,29 @@ export function AuthForm({ initialMode }: { initialMode: AuthMode }) {
         </div>
 
         <Field
-          label="Email"
-          name="email"
-          type="email"
-          autoComplete={isRegister ? "email" : "username"}
-          defaultValue={state.values.email}
-          error={errorFor("email")}
-          onInput={markEdited("email")}
+          label="Username"
+          name="username"
+          autoComplete="username"
+          autoCapitalize="none"
+          defaultValue={state.values.username}
+          error={errorFor("username")}
+          onInput={markEdited("username")}
         />
+
+        <div className="reveal" data-open={isRegister}>
+          <div className="reveal-inner" inert={!isRegister}>
+            <Field
+              label="Email"
+              name="email"
+              type="email"
+              autoComplete="email"
+              defaultValue={registerState.values.email}
+              error={errorFor("email")}
+              disabled={!isRegister}
+              onInput={markEdited("email")}
+            />
+          </div>
+        </div>
 
         <Field
           label="Password"

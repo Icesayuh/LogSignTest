@@ -8,6 +8,7 @@ type FieldProps = {
   name: string;
   type?: "text" | "email" | "password";
   autoComplete: string;
+  autoCapitalize?: "none" | "words";
   error?: string;
   hint?: string;
   defaultValue?: string;
@@ -15,7 +16,7 @@ type FieldProps = {
   onInput?: () => void;
 };
 
-export function Field({ label, name, type = "text", autoComplete, error, hint, defaultValue, disabled, onInput }: FieldProps) {
+export function Field({ label, name, type = "text", autoComplete, autoCapitalize, error, hint, defaultValue, disabled, onInput }: FieldProps) {
   const id = useId();
   const errorId = `${id}-error`;
   const hintId = `${id}-hint`;
@@ -38,7 +39,7 @@ export function Field({ label, name, type = "text", autoComplete, error, hint, d
           defaultValue={defaultValue}
           disabled={disabled}
           spellCheck={false}
-          autoCapitalize={type === "text" ? "words" : "none"}
+          autoCapitalize={autoCapitalize ?? (type === "text" ? "words" : "none")}
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy}
           onInput={onInput}

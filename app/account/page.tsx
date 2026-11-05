@@ -27,6 +27,10 @@ export default async function AccountPage() {
             <dd>{session.name}</dd>
           </div>
           <div className="fact">
+            <dt>Username</dt>
+            <dd>{session.username}</dd>
+          </div>
+          <div className="fact">
             <dt>Email</dt>
             <dd>{session.email}</dd>
           </div>
