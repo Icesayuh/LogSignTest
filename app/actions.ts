@@ -1,7 +1,9 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { browserAccountStore as accounts } from "@/lib/auth/accounts";
+import { accountStore as accounts } from "@/lib/auth/store";
+import { AccountStoreError } from "@/lib/auth/errors";
+import type { Account } from "@/lib/auth/accounts";
 import { endSession, startSession } from "@/lib/auth/session";
 import {
   hasErrors,
@@ -33,7 +35,13 @@ export async function signIn(_previous: AuthFormState, formData: FormData): Prom
   const fieldErrors = validateSignIn(username, password);
   if (hasErrors(fieldErrors)) return { fieldErrors, values };
 
-  const account = await accounts.verify(username, password);
+  let account: Account | null;
+  try {
+    account = await accounts.verify(username, password);
+  } catch (error) {
+    console.error("Sign-in failed:", error);
+    return { fieldErrors: {}, formError: "We can't reach the sign-in service right now. Try again in a moment.", values };
+  }
   // One message for both cases so the form doesn't reveal which usernames are registered.
   if (!account) return { fieldErrors: {}, formError: "Wrong username or password. Try again, or create an account.", values };
 
@@ -51,14 +59,23 @@ export async function register(_previous: AuthFormState, formData: FormData): Pr
   const fieldErrors = validateRegistration(username, email, password, confirmPassword);
   if (hasErrors(fieldErrors)) return { fieldErrors, values };
 
-  if (await accounts.findByUsername(username)) {
-    return { fieldErrors: { username: "That username is taken. Try another one." }, values };
+  let account: Account;
+  try {
+    if (await accounts.findByUsername(username)) {
+      return { fieldErrors: { username: "That username is taken. Try another one." }, values };
+    }
+    if (await accounts.findByEmail(email)) {
+      return { fieldErrors: { email: "An account with this email already exists. Sign in instead." }, values };
+    }
+    account = await accounts.create({ username, email, password });
+  } catch (error) {
+    // The directory can reject a registration the form couldn't predict (password policy, a race on a username).
+    if (error instanceof AccountStoreError && error.field) {
+      return { fieldErrors: { [error.field]: error.message }, values };
+    }
+    console.error("Registration failed:", error);
+    return { fieldErrors: {}, formError: "We couldn't create your account right now. Try again in a moment.", values };
   }
-  if (await accounts.findByEmail(email)) {
-    return { fieldErrors: { email: "An account with this email already exists. Sign in instead." }, values };
-  }
-
-  const account = await accounts.create({ username, email, password });
   await startSession(account);
   redirect(ACCOUNT_HOME);
 }
