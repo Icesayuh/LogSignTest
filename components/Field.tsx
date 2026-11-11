@@ -6,17 +6,19 @@ import { AlertIcon, EyeIcon, EyeOffIcon } from "./Icons";
 type FieldProps = {
   label: string;
   name: string;
-  type?: "text" | "email" | "password";
+  type?: "text" | "email" | "password" | "tel";
   autoComplete: string;
   autoCapitalize?: "none" | "words";
   error?: string;
   hint?: string;
   defaultValue?: string;
   disabled?: boolean;
+  inputMode?: "numeric" | "tel" | "text";
+  autoFocus?: boolean;
   onInput?: () => void;
 };
 
-export function Field({ label, name, type = "text", autoComplete, autoCapitalize, error, hint, defaultValue, disabled, onInput }: FieldProps) {
+export function Field({ label, name, type = "text", autoComplete, autoCapitalize, error, hint, defaultValue, disabled, inputMode, autoFocus, onInput }: FieldProps) {
   const id = useId();
   const errorId = `${id}-error`;
   const hintId = `${id}-hint`;
@@ -38,6 +40,8 @@ export function Field({ label, name, type = "text", autoComplete, autoCapitalize
           autoComplete={autoComplete}
           defaultValue={defaultValue}
           disabled={disabled}
+          inputMode={inputMode}
+          autoFocus={autoFocus}
           spellCheck={false}
           autoCapitalize={autoCapitalize ?? (type === "text" ? "words" : "none")}
           aria-invalid={error ? true : undefined}
