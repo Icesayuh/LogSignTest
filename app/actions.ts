@@ -3,8 +3,10 @@
 import { redirect } from "next/navigation";
 import { accountStore as accounts } from "@/lib/auth/store";
 import { AccountStoreError } from "@/lib/auth/errors";
-import { isOidcConfigured } from "@/lib/auth/oidc";
 import type { Account } from "@/lib/auth/accounts";
+import { cancelMfa, selectMfaDevice, startMfa, verifyMfaCode, type MfaOutcome } from "@/lib/auth/mfa";
+import { MfaFlowError, mfaRequired } from "@/lib/auth/mfa-flow";
+import type { MfaView } from "@/lib/auth/mfa-types";
 import { endSession, startSession } from "@/lib/auth/session";
 import {
   hasErrors,
@@ -19,6 +21,8 @@ export type AuthFormState = {
   fieldErrors: FieldErrors;
   formError?: string;
   values: { username: string; email: string };
+  // Set once the password was accepted and a verification code is the next step.
+  mfa?: MfaView;
 };
 
 const ACCOUNT_HOME = "/account";
@@ -26,6 +30,30 @@ const ACCOUNT_HOME = "/account";
 function readText(formData: FormData, field: string): string {
   const value = formData.get(field);
   return typeof value === "string" ? value : "";
+}
+
+// The password (or registration) just succeeded. Start the MFA step, or finish signing in when MFA is off.
+async function continueToMfa(account: Account, values: AuthFormState["values"]): Promise<AuthFormState> {
+  if (!mfaRequired()) {
+    await startSession(account);
+    redirect(ACCOUNT_HOME);
+  }
+
+  let outcome: MfaOutcome;
+  try {
+    outcome = await startMfa(account);
+  } catch (error) {
+    console.error("Could not start MFA:", error);
+    const formError =
+      error instanceof MfaFlowError ? error.message : "We couldn't start verification right now. Try again in a moment.";
+    return { fieldErrors: {}, formError, values };
+  }
+
+  if (outcome.done) {
+    await startSession(outcome.account);
+    redirect(ACCOUNT_HOME);
+  }
+  return { fieldErrors: {}, values, mfa: outcome.view };
 }
 
 export async function signIn(_previous: AuthFormState, formData: FormData): Promise<AuthFormState> {
@@ -46,8 +74,7 @@ export async function signIn(_previous: AuthFormState, formData: FormData): Prom
   // One message for both cases so the form doesn't reveal which usernames are registered.
   if (!account) return { fieldErrors: {}, formError: "Wrong username or password. Try again, or create an account.", values };
 
-  await startSession(account);
-  redirect(ACCOUNT_HOME);
+  return continueToMfa(account, values);
 }
 
 export async function register(_previous: AuthFormState, formData: FormData): Promise<AuthFormState> {
@@ -75,12 +102,33 @@ export async function register(_previous: AuthFormState, formData: FormData): Pr
     console.error("Registration failed:", error);
     return { fieldErrors: {}, formError: "We couldn't create your account right now. Try again in a moment.", values };
   }
-  // With hosted sign-in the new user signs in through PingOne right away, so their first
-  // sign-in goes through the MFA policy (including device enrollment) like every later one.
-  if (isOidcConfigured()) redirect(`/auth/login?hint=${encodeURIComponent(username)}`);
 
-  await startSession(account);
-  redirect(ACCOUNT_HOME);
+  // A new account has no verification device yet, so this lands on the email set-up step.
+  return continueToMfa(account, values);
+}
+
+// The code step. `intent` says which button was pressed: pick a device, or submit a code.
+export async function mfaStep(previous: MfaView, formData: FormData): Promise<MfaView> {
+  const intent = readText(formData, "intent");
+
+  let outcome: MfaOutcome;
+  try {
+    outcome =
+      intent === "select" ? await selectMfaDevice(readText(formData, "deviceId")) : await verifyMfaCode(readText(formData, "otp"));
+  } catch (error) {
+    console.error("MFA step failed:", error);
+    return { ...previous, error: "We can't reach the verification service right now. Try again in a moment." };
+  }
+
+  if (outcome.done) {
+    await startSession(outcome.account);
+    redirect(ACCOUNT_HOME);
+  }
+  return outcome.view;
+}
+
+export async function cancelMfaStep(): Promise<void> {
+  await cancelMfa();
 }
 
 export async function signOut(): Promise<void> {
