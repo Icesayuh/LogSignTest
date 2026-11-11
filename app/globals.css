@@ -450,3 +450,9 @@ input {
     transition-delay: 0ms !important;
   }
 }
+
+/* Verification step: one full-width button per way of getting a code. */
+.device-list {
+  display: grid;
+  gap: 12px;
+}
