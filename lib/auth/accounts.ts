@@ -7,9 +7,11 @@ export type Account = {
   id: string;
   username: string;
   email: string;
-  passwordHash: string;
   createdAt: string;
 };
+
+// Only the browser store keeps a hash; providers like PingOne verify passwords themselves.
+type StoredAccount = Account & { passwordHash: string };
 
 export type NewAccount = { username: string; email: string; password: string };
 
@@ -22,12 +24,12 @@ export interface AccountStore {
   verify(username: string, password: string): Promise<Account | null>;
 }
 
-async function readAccounts(): Promise<Account[]> {
+async function readAccounts(): Promise<StoredAccount[]> {
   const jar = await cookies();
-  return unseal<Account[]>(jar.get(ACCOUNTS_COOKIE)?.value) ?? [];
+  return unseal<StoredAccount[]>(jar.get(ACCOUNTS_COOKIE)?.value) ?? [];
 }
 
-async function writeAccounts(accounts: Account[]): Promise<void> {
+async function writeAccounts(accounts: StoredAccount[]): Promise<void> {
   const jar = await cookies();
   jar.set(ACCOUNTS_COOKIE, seal(accounts), {
     httpOnly: true,
@@ -38,7 +40,7 @@ async function writeAccounts(accounts: Account[]): Promise<void> {
   });
 }
 
-async function findByUsername(username: string): Promise<Account | null> {
+async function findByUsername(username: string): Promise<StoredAccount | null> {
   const accounts = await readAccounts();
   return accounts.find((account) => account.username === username) ?? null;
 }
@@ -56,7 +58,7 @@ export const browserAccountStore: AccountStore = {
   findByEmail,
 
   async create({ username, email, password }) {
-    const account: Account = {
+    const account: StoredAccount = {
       id: randomUUID(),
       username,
       email,
