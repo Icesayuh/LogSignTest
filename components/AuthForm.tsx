@@ -6,6 +6,7 @@ import { MIN_PASSWORD_LENGTH } from "@/lib/auth/config";
 import type { AuthField } from "@/lib/auth/validation";
 import { Field } from "./Field";
 import { AlertIcon, ArrowRightIcon } from "./Icons";
+import { MfaStep } from "./MfaStep";
 import { PRODUCT_NAME } from "@/lib/brand";
 
 export type AuthMode = "signin" | "register";
@@ -38,6 +39,7 @@ export function AuthForm({ initialMode }: { initialMode: AuthMode }) {
   const [registerState, registerAction, registerPending] = useActionState(register, EMPTY_STATE);
   const [editedFields, setEditedFields] = useState<ReadonlySet<AuthField>>(new Set());
   const [silenced, setSilenced] = useState(false);
+  const [mfaDismissed, setMfaDismissed] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
   const isRegister = mode === "register";
@@ -45,10 +47,13 @@ export function AuthForm({ initialMode }: { initialMode: AuthMode }) {
   const dispatch = isRegister ? registerAction : signInAction;
   const pending = isRegister ? registerPending : signInPending;
   const copy = COPY[mode];
+  // Once the password is accepted the server may ask for a verification code; that step replaces the form.
+  const mfa = mfaDismissed ? undefined : state.mfa;
 
   useEffect(() => {
     setEditedFields(new Set());
     setSilenced(false);
+    setMfaDismissed(false);
     const firstProblem = formRef.current?.querySelector<HTMLElement>("[aria-invalid='true'], [data-form-error]");
     firstProblem?.focus();
   }, [signInState, registerState]);
@@ -76,6 +81,10 @@ export function AuthForm({ initialMode }: { initialMode: AuthMode }) {
 
   return (
     <div className="auth" data-mode={mode}>
+      {mfa ? (
+        <MfaStep initial={mfa} onRestart={() => setMfaDismissed(true)} />
+      ) : (
+      <>
       <header className="auth-header">
         <h1 className="auth-heading" key={mode}>
           {copy.heading}
@@ -152,6 +161,8 @@ export function AuthForm({ initialMode }: { initialMode: AuthMode }) {
           {copy.switchAction}
         </button>
       </p>
+      </>
+      )}
     </div>
   );
 }
