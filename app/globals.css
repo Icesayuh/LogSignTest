@@ -450,3 +450,54 @@ input {
     transition-delay: 0ms !important;
   }
 }
+
+/* Verification steps: one full-width button per way of getting a code, and the authenticator-app QR. */
+.choice-list {
+  display: grid;
+  gap: 12px;
+}
+
+.choice-list + .submit {
+  margin-top: 28px;
+}
+
+/* A choice button shows a title and, for set-up, a one-line description under it. */
+.secondary.choice {
+  height: auto;
+  min-height: var(--control-height);
+  padding: 14px 18px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  text-align: left;
+}
+
+.choice-hint {
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+
+.mode-switch-stack {
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+}
+
+.qr {
+  width: fit-content;
+  margin: 24px 0 12px;
+  padding: 10px;
+  border-radius: var(--radius);
+  background: #fff; /* a QR code needs a light background in any theme */
+}
+
+.qr img {
+  display: block;
+}
+
+.secret-key {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
