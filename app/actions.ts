@@ -33,7 +33,7 @@ function readText(formData: FormData, field: string): string {
 }
 
 // The password (or registration) just succeeded. Start the MFA step, or finish signing in when MFA is off.
-async function continueToMfa(account: Account, values: AuthFormState["values"]): Promise<AuthFormState> {
+async function continueToMfa(account: Account, values: AuthFormState["values"], newAccount = false): Promise<AuthFormState> {
   if (!mfaRequired()) {
     await startSession(account);
     redirect(ACCOUNT_HOME);
@@ -41,7 +41,7 @@ async function continueToMfa(account: Account, values: AuthFormState["values"]):
 
   let outcome: MfaOutcome;
   try {
-    outcome = await startMfa(account);
+    outcome = await startMfa(account, { newAccount });
   } catch (error) {
     console.error("Could not start MFA:", error);
     const formError =
@@ -103,8 +103,8 @@ export async function register(_previous: AuthFormState, formData: FormData): Pr
     return { fieldErrors: {}, formError: "We couldn't create your account right now. Try again in a moment.", values };
   }
 
-  // A new account has no verification device yet, so this lands on the email set-up step.
-  return continueToMfa(account, values);
+  // A new account has no verification method yet, so this lands on choosing one to set up.
+  return continueToMfa(account, values, true);
 }
 
 // Each MFA screen posts different fields, which says what the person just did.
