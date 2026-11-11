@@ -130,14 +130,17 @@ export const pingOneAccountStore: AccountStore = {
 
   async create({ username, email, password }: NewAccount) {
     const cfg = readConfig();
+    // Plain application/json creates the user but silently drops the password (status NO_PASSWORD);
+    // only the import media type stores it. forceChange: false so the first sign-in isn't refused
+    // with MUST_CHANGE_PASSWORD, which this page has no screen for.
     const r = await call(cfg, "/users", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/vnd.pingidentity.user.import+json" },
       body: JSON.stringify({
         username,
         email,
         population: { id: cfg.populationId },
-        password: { value: password },
+        password: { value: password, forceChange: false },
       }),
     });
 
