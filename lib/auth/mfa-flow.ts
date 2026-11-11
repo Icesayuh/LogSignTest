@@ -177,10 +177,14 @@ function afterSelect(tx: MfaTransaction, auth: api.DeviceAuthentication, choice:
   return null;
 }
 
-// Call right after the password check succeeded.
-export async function beginMfa(account: Account, ctx: MfaContext): Promise<FlowResult> {
+// Call right after the password check succeeded. `newAccount` is true straight after registering.
+export async function beginMfa(account: Account, ctx: MfaContext, opts: { newAccount?: boolean } = {}): Promise<FlowResult> {
+  await api.enableUserMfa(account.id); // the console's "Multi-Factor Authentication" switch; harmless to repeat
+
+  // A user with no usable method (never set one up, abandoned it, or only has types this page can't use)
+  // sets one up now, in this same sign-in. Nothing signs them in until a method has been verified.
   const devices = await api.listActiveDevices(account.id);
-  if (devices.length === 0) return startSetup(account, ctx);
+  if (devices.length === 0) return startSetup(account, ctx, opts.newAccount === true);
 
   let auth = await api.beginDeviceAuthentication(account.id);
   if (auth.status === "COMPLETED") return { done: true, account }; // the MFA policy decided no further step is needed
@@ -234,7 +238,7 @@ async function switchMethod(tx: MfaTransaction): Promise<FlowResult> {
 
 // ---- set-up ----
 
-async function startSetup(account: Account, ctx: MfaContext): Promise<FlowResult> {
+async function startSetup(account: Account, ctx: MfaContext, newAccount: boolean): Promise<FlowResult> {
   let methods = await api.enrollmentMethods();
   if (!account.email) methods = methods.filter((m) => m !== "EMAIL");
   if (methods.length === 0) throw new MfaFlowError("No verification method is available for your account. Ask an administrator.");
@@ -243,7 +247,9 @@ async function startSetup(account: Account, ctx: MfaContext): Promise<FlowResult
     account,
     rpId: ctx.rpId,
     step: "method",
-    prompt: "Choose how you'd like to verify it's you when you sign in.",
+    prompt: newAccount
+      ? "Choose how you'd like to verify it's you when you sign in."
+      : "Your account doesn't have a verification method yet. Choose one to set up now.",
     methods,
     offered: methods,
     enrolled: [],
@@ -254,6 +260,7 @@ async function startSetup(account: Account, ctx: MfaContext): Promise<FlowResult
 
 async function beginMethod(tx: MfaTransaction, method: EnrollMethod): Promise<FlowResult> {
   const { account } = tx;
+  await api.removePendingDevices(account.id, method); // clear an earlier unfinished attempt of this type
   switch (method) {
     case "EMAIL": {
       const { id } = await api.createEmailDevice(account.id, account.email);
