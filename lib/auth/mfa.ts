@@ -47,8 +47,8 @@ async function relyingPartyId(): Promise<string> {
   return host.replace(/:\d+$/, "");
 }
 
-export async function startMfa(account: Account): Promise<MfaOutcome> {
-  return settle(await beginMfa(account, { rpId: await relyingPartyId() }));
+export async function startMfa(account: Account, opts: { newAccount?: boolean } = {}): Promise<MfaOutcome> {
+  return settle(await beginMfa(account, { rpId: await relyingPartyId() }, opts));
 }
 
 export async function continueMfa(action: MfaAction): Promise<MfaOutcome> {
