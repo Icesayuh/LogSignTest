@@ -48,9 +48,14 @@ function toDeviceAuthentication(data: any): DeviceAuthentication {
 
 const ENROLL_METHODS: EnrollMethod[] = ["TOTP", "EMAIL", "FIDO2", "SMS"];
 
-// The methods the MFA policy allows (and this page can set up). PINGONE_MFA_METHODS overrides the
-// policy, e.g. "TOTP,EMAIL" to leave passkeys out. If the policy can't be read, email alone is
-// offered rather than blocking sign-up.
+// What people are offered by default. Passkeys and text messages are opt-in (see PINGONE_MFA_METHODS).
+const DEFAULT_ENROLL_METHODS: EnrollMethod[] = ["TOTP", "EMAIL"];
+
+// The methods offered when someone sets up MFA.
+//  - PINGONE_MFA_METHODS, when set, is used as written (e.g. "TOTP,EMAIL,FIDO2" to add passkeys).
+//  - Otherwise the authenticator app and email are offered, minus any the MFA policy has switched off.
+//  - If the policy can't be read (usually the worker app lacks mfa:read:deviceAuthenticationPolicy),
+//    both are still offered and a warning is logged, instead of quietly dropping to email only.
 export async function enrollmentMethods(): Promise<EnrollMethod[]> {
   const override = process.env.PINGONE_MFA_METHODS;
   if (override) {
@@ -64,10 +69,10 @@ export async function enrollmentMethods(): Promise<EnrollMethod[]> {
     if (!r.ok) throw failure("Reading the MFA policy", r);
     const policy = policyId ? r.data : (r.data?._embedded?.deviceAuthenticationPolicies ?? []).find((p: any) => p?.default);
     if (!policy) throw new Error("No default MFA policy was found.");
-    return ENROLL_METHODS.filter((m) => policy[m.toLowerCase()]?.enabled === true);
+    return DEFAULT_ENROLL_METHODS.filter((m) => policy[m.toLowerCase()]?.enabled === true);
   } catch (error) {
-    console.warn("Could not read the MFA policy, so only email is offered:", error);
-    return ["EMAIL"];
+    console.warn("Could not read the MFA policy, so the default methods are offered as they are:", error);
+    return DEFAULT_ENROLL_METHODS;
   }
 }
 
@@ -78,6 +83,43 @@ export async function listActiveDevices(userId: string): Promise<MfaDevice[]> {
   if (!r.ok) throw failure("Listing MFA devices", r);
   const devices: MfaDevice[] = r.data?._embedded?.devices ?? [];
   return devices.filter((device) => device.status === "ACTIVE" && isSupportedDevice(device));
+}
+
+// Turns on "Multi-Factor Authentication" for the user, which is the switch the PingOne console shows
+// on the user's Authentication tab. A new user has it off, so this runs when sign-up or sign-in starts
+// the MFA step. It never blocks signing in: this page enforces MFA itself, so a failure here only
+// leaves the console switch off, and is logged with the likely cause.
+export async function enableUserMfa(userId: string): Promise<boolean> {
+  try {
+    const r = await call(readConfig(), `/users/${encodeURIComponent(userId)}/mfaEnabled`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mfaEnabled: true }),
+    });
+    if (!r.ok) throw failure("Enabling MFA on the user", r);
+    return true;
+  } catch (error) {
+    console.error("Could not switch MFA on for the user in PingOne:", error);
+    return false;
+  }
+}
+
+// A set-up that was abandoned (tab closed, wrong code) leaves a device waiting for activation. Starting
+// again would add another next to it, and PingOne limits how many a user can have, so the old ones of
+// the same type are removed first. Best effort: set-up carries on if this fails (it needs the
+// mfa:delete:device permission).
+export async function removePendingDevices(userId: string, type: string): Promise<void> {
+  try {
+    const r = await call(readConfig(), `/users/${encodeURIComponent(userId)}/devices`);
+    if (!r.ok) throw failure("Listing MFA devices", r);
+    const stale: MfaDevice[] = (r.data?._embedded?.devices ?? []).filter((d: MfaDevice) => d.type === type && d.status === "ACTIVATION_REQUIRED");
+    for (const device of stale) {
+      const d = await call(readConfig(), `/users/${encodeURIComponent(userId)}/devices/${encodeURIComponent(device.id)}`, { method: "DELETE" });
+      if (!d.ok && d.status !== 404) throw failure("Removing an unfinished MFA device", d);
+    }
+  } catch (error) {
+    console.warn("Could not clear unfinished MFA devices (set-up continues):", error);
+  }
 }
 
 async function createDevice(userId: string, body: Record<string, unknown>): Promise<ApiResult> {
