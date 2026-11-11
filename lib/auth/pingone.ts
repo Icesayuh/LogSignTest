@@ -4,7 +4,7 @@ import { AccountStoreError, type StoreErrorField } from "./errors";
 // PingOne Directory as the account database. Server-only: the worker app's client secret
 // must never reach the browser, and this file is only imported from server actions.
 
-type Config = {
+export type Config = {
   apiUrl: string;
   authUrl: string;
   envId: string;
@@ -18,7 +18,7 @@ export function isPingOneConfigured(): boolean {
 }
 
 // Where PingOne lives for this tenant. The two URL overrides exist for tests; normally the region is all you set.
-export function pingOneEndpoints(): { apiUrl: string; authUrl: string; envId: string } {
+function pingOneEndpoints(): { apiUrl: string; authUrl: string; envId: string } {
   const env = process.env;
   const region = env.PINGONE_REGION || "com";
   return {
@@ -28,7 +28,7 @@ export function pingOneEndpoints(): { apiUrl: string; authUrl: string; envId: st
   };
 }
 
-function readConfig(): Config {
+export function readConfig(): Config {
   const env = process.env;
   const missing = ["PINGONE_ENV_ID", "PINGONE_CLIENT_ID", "PINGONE_CLIENT_SECRET", "PINGONE_POPULATION_ID"].filter(
     (name) => !env[name],
@@ -48,7 +48,7 @@ function readConfig(): Config {
 // ---- worker token (cached per server instance) ----
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
-async function workerToken(cfg: Config): Promise<string> {
+export async function workerToken(cfg: Config): Promise<string> {
   if (cachedToken && Date.now() < cachedToken.expiresAt - 30_000) return cachedToken.value;
 
   const basic = Buffer.from(`${cfg.clientId}:${cfg.clientSecret}`).toString("base64");
@@ -65,11 +65,18 @@ async function workerToken(cfg: Config): Promise<string> {
   return cachedToken.value;
 }
 
-type ApiResult = { status: number; ok: boolean; data: any };
+export type ApiResult = { status: number; ok: boolean; data: any };
 
-async function call(cfg: Config, path: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}): Promise<ApiResult> {
+// `auth: true` targets PingOne's authentication host (https://auth.pingone.<region>/<env>/...),
+// which is where the MFA deviceAuthentications API lives; otherwise the Management API host.
+export async function call(
+  cfg: Config,
+  path: string,
+  init: { method?: string; headers?: Record<string, string>; body?: string; auth?: boolean } = {},
+): Promise<ApiResult> {
   const token = await workerToken(cfg);
-  const res = await fetch(`${cfg.apiUrl}/v1/environments/${cfg.envId}${path}`, {
+  const base = init.auth ? `${cfg.authUrl}/${cfg.envId}` : `${cfg.apiUrl}/v1/environments/${cfg.envId}`;
+  const res = await fetch(`${base}${path}`, {
     method: init.method ?? "GET",
     headers: { Authorization: `Bearer ${token}`, ...init.headers },
     body: init.body,
@@ -106,15 +113,6 @@ async function findUser(cfg: Config, attribute: "username" | "email", value: str
   const r = await call(cfg, `/users?filter=${filter}&limit=1`);
   if (!r.ok) throw new Error(`PingOne user lookup failed (${r.status}). Does the worker app have the Identity Data Admin role?`);
   return r.data?._embedded?.users?.[0] ?? null;
-}
-
-// Used after a hosted PingOne sign-in: the ID token only says who signed in (`sub`), so the
-// username, email and creation date come from the directory itself.
-export async function getPingOneAccountById(userId: string): Promise<Account> {
-  const cfg = readConfig();
-  const r = await call(cfg, `/users/${encodeURIComponent(userId)}`);
-  if (!r.ok) throw new Error(`PingOne user read failed (${r.status}). Does the worker app have the Identity Data Admin role?`);
-  return toAccount(r.data, "");
 }
 
 export const pingOneAccountStore: AccountStore = {
