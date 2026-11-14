@@ -1,12 +1,15 @@
 "use client";
 
-import { startTransition, useActionState, useEffect, useRef, useState, type FormEvent } from "react";
+import { startTransition, useActionState, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { register, signIn, type AuthFormState } from "@/app/actions";
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth/config";
 import type { AuthField } from "@/lib/auth/validation";
 import { Field } from "./Field";
 import { AlertIcon, ArrowRightIcon } from "./Icons";
 import { MfaStep } from "./MfaStep";
+import { RecognizeStep } from "./RecognizeStep";
+import type { MfaView } from "@/lib/auth/mfa-types";
+import type { RecognizeView } from "@/lib/recognize/types";
 import { PRODUCT_NAME } from "@/lib/brand";
 
 export type AuthMode = "signin" | "register";
@@ -40,6 +43,12 @@ export function AuthForm({ initialMode }: { initialMode: AuthMode }) {
   const [editedFields, setEditedFields] = useState<ReadonlySet<AuthField>>(new Set());
   const [silenced, setSilenced] = useState(false);
   const [mfaDismissed, setMfaDismissed] = useState(false);
+  // The face step (PingOne Recognize) sits between the password and MFA. It can swap its own view
+  // (face login -> enroll instead), hand over to MFA, or send the person back to the form with a message.
+  const [faceView, setFaceView] = useState<RecognizeView>();
+  const [faceMfa, setFaceMfa] = useState<MfaView>();
+  const [faceMessage, setFaceMessage] = useState<string>();
+  const [faceDismissed, setFaceDismissed] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
   const isRegister = mode === "register";
@@ -48,18 +57,30 @@ export function AuthForm({ initialMode }: { initialMode: AuthMode }) {
   const pending = isRegister ? registerPending : signInPending;
   const copy = COPY[mode];
   // Once the password is accepted the server may ask for a verification code; that step replaces the form.
-  const mfa = mfaDismissed ? undefined : state.mfa;
+  const mfa = mfaDismissed ? undefined : (faceMfa ?? state.mfa);
+  const face = faceDismissed || faceMfa ? undefined : (faceView ?? state.recognize);
+
+  const handleFaceMfa = useCallback((view: MfaView) => setFaceMfa(view), []);
+  const handleFaceSwitch = useCallback((view: RecognizeView) => setFaceView(view), []);
+  const handleFaceRestart = useCallback((message?: string) => {
+    setFaceDismissed(true);
+    setFaceMessage(message);
+  }, []);
 
   useEffect(() => {
     setEditedFields(new Set());
     setSilenced(false);
     setMfaDismissed(false);
+    setFaceView(undefined);
+    setFaceMfa(undefined);
+    setFaceMessage(undefined);
+    setFaceDismissed(false);
     const firstProblem = formRef.current?.querySelector<HTMLElement>("[aria-invalid='true'], [data-form-error]");
     firstProblem?.focus();
   }, [signInState, registerState]);
 
   const errorFor = (field: AuthField) => (silenced || editedFields.has(field) ? undefined : state.fieldErrors[field]);
-  const formError = silenced ? undefined : state.formError;
+  const formError = silenced ? undefined : (faceMessage ?? state.formError);
 
   const markEdited = (field: AuthField) => () =>
     setEditedFields((previous) => (previous.has(field) ? previous : new Set(previous).add(field)));
@@ -81,7 +102,9 @@ export function AuthForm({ initialMode }: { initialMode: AuthMode }) {
 
   return (
     <div className="auth" data-mode={mode}>
-      {mfa ? (
+      {face ? (
+        <RecognizeStep view={face} onMfa={handleFaceMfa} onSwitch={handleFaceSwitch} onRestart={handleFaceRestart} />
+      ) : mfa ? (
         <MfaStep initial={mfa} onRestart={() => setMfaDismissed(true)} />
       ) : (
       <>
