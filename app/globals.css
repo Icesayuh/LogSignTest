@@ -501,3 +501,10 @@ input {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   overflow-wrap: anywhere;
 }
+
+/* Hosts the PingOne Recognize camera component; it brings its own sizing. */
+.recognize-host {
+  display: flex;
+  justify-content: center;
+  min-height: 120px;
+}
