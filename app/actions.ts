@@ -7,6 +7,9 @@ import type { Account } from "@/lib/auth/accounts";
 import { cancelMfa, continueMfa, startMfa, type MfaOutcome } from "@/lib/auth/mfa";
 import { MfaFlowError, mfaRequired, type MfaAction } from "@/lib/auth/mfa-flow";
 import type { MfaView } from "@/lib/auth/mfa-types";
+import { beginRecognize, cancelRecognize, completeRecognize, switchRecognizeMode } from "@/lib/recognize/flow";
+import { recognizeRequired } from "@/lib/recognize/server";
+import type { RecognizeView } from "@/lib/recognize/types";
 import { endSession, startSession } from "@/lib/auth/session";
 import {
   hasErrors,
@@ -23,6 +26,8 @@ export type AuthFormState = {
   values: { username: string; email: string };
   // Set once the password was accepted and a verification code is the next step.
   mfa?: MfaView;
+  // Set when PingOne Recognize comes first: face enrollment after registering, face authentication after the password.
+  recognize?: RecognizeView;
 };
 
 const ACCOUNT_HOME = "/account";
@@ -56,6 +61,17 @@ async function continueToMfa(account: Account, values: AuthFormState["values"], 
   return { fieldErrors: {}, values, mfa: outcome.view };
 }
 
+// The password (or registration) succeeded. When Recognize is on, the face step comes before MFA.
+async function continueToFace(account: Account, values: AuthFormState["values"], newAccount: boolean): Promise<AuthFormState> {
+  if (!recognizeRequired()) return continueToMfa(account, values, newAccount);
+  try {
+    return { fieldErrors: {}, values, recognize: await beginRecognize(account, newAccount ? "enroll" : "auth", newAccount) };
+  } catch (error) {
+    console.error("Could not start PingOne Recognize:", error);
+    return { fieldErrors: {}, formError: "We couldn't start face verification right now. Try again in a moment.", values };
+  }
+}
+
 export async function signIn(_previous: AuthFormState, formData: FormData): Promise<AuthFormState> {
   const username = normalizeUsername(readText(formData, "username"));
   const password = readText(formData, "password");
@@ -74,7 +90,7 @@ export async function signIn(_previous: AuthFormState, formData: FormData): Prom
   // One message for both cases so the form doesn't reveal which usernames are registered.
   if (!account) return { fieldErrors: {}, formError: "Wrong username or password. Try again, or create an account.", values };
 
-  return continueToMfa(account, values);
+  return continueToFace(account, values, false);
 }
 
 export async function register(_previous: AuthFormState, formData: FormData): Promise<AuthFormState> {
@@ -103,8 +119,8 @@ export async function register(_previous: AuthFormState, formData: FormData): Pr
     return { fieldErrors: {}, formError: "We couldn't create your account right now. Try again in a moment.", values };
   }
 
-  // A new account has no verification method yet, so this lands on choosing one to set up.
-  return continueToMfa(account, values, true);
+  // A new account enrolls its face first; after that it has no MFA method yet, so it lands on choosing one to set up.
+  return continueToFace(account, values, true);
 }
 
 // Each MFA screen posts different fields, which says what the person just did.
@@ -133,6 +149,43 @@ export async function mfaStep(previous: MfaView, formData: FormData): Promise<Mf
     redirect(ACCOUNT_HOME);
   }
   return outcome.view;
+}
+
+export type RecognizeStepResult =
+  | { kind: "mfa"; mfa: MfaView }
+  | { kind: "switched"; view: RecognizeView }
+  | { kind: "error"; message: string } // stay on the face step and let the person retry
+  | { kind: "expired"; message: string }; // the attempt is gone; back to the form
+
+// The face step reports back here: either the SDK's signed JWT (checked with Keyless), or a request to enroll instead.
+export async function recognizeStep(formData: FormData): Promise<RecognizeStepResult> {
+  const TIMED_OUT = "Your sign-in timed out. Start again.";
+
+  if (formData.has("enrollInstead")) {
+    const view = await switchRecognizeMode("enroll").catch(() => null);
+    return view ? { kind: "switched", view } : { kind: "expired", message: TIMED_OUT };
+  }
+
+  let check;
+  try {
+    check = await completeRecognize(readText(formData, "jwt"));
+  } catch (error) {
+    console.error("Face verification failed:", error);
+    return { kind: "error", message: "We can't reach the face verification service right now. Try again in a moment." };
+  }
+  if (!check.ok) {
+    return check.expired
+      ? { kind: "expired", message: TIMED_OUT }
+      : { kind: "error", message: "We couldn't confirm that face check. Try again." };
+  }
+
+  const state = await continueToMfa(check.account, { username: check.account.username, email: check.account.email }, check.newAccount);
+  if (state.mfa) return { kind: "mfa", mfa: state.mfa };
+  return { kind: "expired", message: state.formError ?? TIMED_OUT };
+}
+
+export async function cancelRecognizeStep(): Promise<void> {
+  await cancelRecognize();
 }
 
 export async function cancelMfaStep(): Promise<void> {
