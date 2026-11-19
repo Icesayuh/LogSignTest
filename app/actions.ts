@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { accountStore as accounts } from "@/lib/auth/store";
-import { AccountStoreError } from "@/lib/auth/errors";
+import { AccountDisabledError, AccountStoreError } from "@/lib/auth/errors";
 import type { Account } from "@/lib/auth/accounts";
 import { cancelMfa, continueMfa, startMfa, type MfaOutcome } from "@/lib/auth/mfa";
 import { MfaFlowError, mfaRequired, type MfaAction } from "@/lib/auth/mfa-flow";
@@ -68,6 +68,13 @@ export async function signIn(_previous: AuthFormState, formData: FormData): Prom
   try {
     account = await accounts.verify(username, password);
   } catch (error) {
+    if (error instanceof AccountDisabledError) {
+      return {
+        fieldErrors: {},
+        formError: "Your account has been disabled, usually after too many failed verification attempts. Contact an administrator to regain access.",
+        values,
+      };
+    }
     console.error("Sign-in failed:", error);
     return { fieldErrors: {}, formError: "We can't reach the sign-in service right now. Try again in a moment.", values };
   }
