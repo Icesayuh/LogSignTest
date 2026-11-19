@@ -104,6 +104,24 @@ export async function enableUserMfa(userId: string): Promise<boolean> {
   }
 }
 
+// Disables the user in PingOne Directory (the "Enabled" switch on the user's page in the console).
+// Used by the MFA lockout. Returns false, and logs why, when PingOne refuses; the caller still blocks
+// the sign-in either way. Needs the worker app to be allowed to update users (Identity Data Admin).
+export async function disableUser(userId: string): Promise<boolean> {
+  try {
+    const r = await call(readConfig(), `/users/${encodeURIComponent(userId)}/enabled`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: false }),
+    });
+    if (!r.ok) throw failure("Disabling the user", r);
+    return true;
+  } catch (error) {
+    console.error("MFA lockout: could not disable the user in PingOne:", error);
+    return false;
+  }
+}
+
 // A set-up that was abandoned (tab closed, wrong code) leaves a device waiting for activation. Starting
 // again would add another next to it, and PingOne limits how many a user can have, so the old ones of
 // the same type are removed first. Best effort: set-up carries on if this fails (it needs the

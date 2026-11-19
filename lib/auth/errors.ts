@@ -11,3 +11,13 @@ export class AccountStoreError extends Error {
     this.field = field;
   }
 }
+
+// Thrown by an account store when the password was right but the account has been disabled
+// (for example after too many failed MFA attempts). Only raised after the password is proven,
+// so it doesn't reveal which usernames exist.
+export class AccountDisabledError extends Error {
+  constructor() {
+    super("This account is disabled.");
+    this.name = "AccountDisabledError";
+  }
+}

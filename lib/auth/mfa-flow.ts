@@ -22,6 +22,11 @@ import * as api from "./pingone-mfa";
 //    then, if other methods remain: method again (optional, can be skipped) -> signed in
 
 export const MFA_TTL_MS = 10 * 60 * 1000;
+
+// Wrong codes (email, text message, authenticator app) or passkeys allowed before the user is disabled
+// in PingOne. The count survives "start again" (see mfa.ts) and resets on a successful verification.
+export const MFA_MAX_FAILURES = 3;
+const LOCKED_MESSAGE = "Too many failed verification attempts. Your account has been disabled. Contact an administrator to regain access.";
 const RP_NAME = "LogSignTest"; // shown by the browser when it creates a passkey
 
 // On whenever PingOne is the account store; PINGONE_MFA_ENABLED=false turns it off.
@@ -33,7 +38,10 @@ export function mfaRequired(): boolean {
 export class MfaFlowError extends Error {}
 
 // What the flow needs to know about the request it is serving.
-export type MfaContext = { rpId: string }; // the site's host name: a passkey belongs to it
+export type MfaContext = {
+  rpId: string; // the site's host name: a passkey belongs to it
+  failures?: number; // failed verifications already on record for this person (see mfa.ts)
+};
 
 type Step = "select" | "otp" | "passkey" | "method" | "phone" | "enroll" | "totp" | "passkey-setup";
 
@@ -52,6 +60,7 @@ export type MfaTransaction = {
   offered?: EnrollMethod[]; // what the method screen currently lists
   enrolled?: EnrollMethod[];
   optional?: boolean; // the method screen is an extra, not a requirement
+  failures?: number; // wrong codes / passkeys so far; MFA_MAX_FAILURES disables the user
   pendingMethod?: EnrollMethod;
   enrollDeviceId?: string;
   totpKeyUri?: string;
@@ -69,9 +78,11 @@ export type MfaAction =
   | { type: "passkey"; credential: string; origin: string }
   | { type: "skip" };
 
-export type FlowResult =
-  | { done: true; account: Account }
-  | { done: false; view: MfaView; transaction: MfaTransaction | null }; // null: nothing left to remember
+// `strikes` tells the caller what to remember about failed verifications between attempts:
+// undefined leaves the record alone, an object stores it, null clears it.
+export type Strikes = { userId: string; count: number } | null;
+type Pending = { done: false; view: MfaView; transaction: MfaTransaction | null; strikes?: Strikes }; // null transaction: nothing left to remember
+export type FlowResult = { done: true; account: Account } | Pending;
 
 // ---- small helpers ----
 
@@ -158,12 +169,39 @@ async function viewOf(tx: MfaTransaction, error?: string): Promise<MfaView> {
   }
 }
 
-async function show(tx: MfaTransaction, error?: string): Promise<FlowResult> {
+async function show(tx: MfaTransaction, error?: string): Promise<Pending> {
   return { done: false, view: await viewOf(tx, error), transaction: tx };
 }
 
 function expired(error: string): FlowResult {
   return { done: false, view: { step: "expired", error }, transaction: null };
+}
+
+// ---- lockout ----
+
+// Disables the user in PingOne and ends the sign-in. If PingOne refuses, the count stays at the limit,
+// so the next attempt is blocked and the disable is tried again (see beginMfa).
+async function lockOut(account: Account): Promise<FlowResult> {
+  const disabled = await api.disableUser(account.id);
+  return {
+    done: false,
+    view: { step: "expired", error: LOCKED_MESSAGE },
+    transaction: null,
+    strikes: disabled ? null : { userId: account.id, count: MFA_MAX_FAILURES },
+  };
+}
+
+// One wrong code or passkey. At the limit the user is disabled; before it, the person is told how many
+// tries are left. `ended`: PingOne closed this sign-in itself, so there is no screen to stay on.
+async function strike(tx: MfaTransaction, message: string, opts: { ended?: boolean } = {}): Promise<FlowResult> {
+  const count = (tx.failures ?? 0) + 1;
+  if (count >= MFA_MAX_FAILURES) return lockOut(tx.account);
+
+  const left = MFA_MAX_FAILURES - count;
+  const text = `${message} ${left} ${left === 1 ? "attempt" : "attempts"} left before your account is disabled.`;
+  const strikes = { userId: tx.account.id, count };
+  if (opts.ended) return { done: false, view: { step: "expired", error: text }, transaction: null, strikes };
+  return { ...(await show({ ...tx, failures: count }, text)), strikes };
 }
 
 // ---- sign-in ----
@@ -179,6 +217,9 @@ function afterSelect(tx: MfaTransaction, auth: api.DeviceAuthentication, choice:
 
 // Call right after the password check succeeded. `newAccount` is true straight after registering.
 export async function beginMfa(account: Account, ctx: MfaContext, opts: { newAccount?: boolean } = {}): Promise<FlowResult> {
+  // Already at the limit (the earlier disable didn't go through): block and try to disable again.
+  if ((ctx.failures ?? 0) >= MFA_MAX_FAILURES) return lockOut(account);
+
   await api.enableUserMfa(account.id); // the console's "Multi-Factor Authentication" switch; harmless to repeat
 
   // A user with no usable method (never set one up, abandoned it, or only has types this page can't use)
@@ -191,7 +232,7 @@ export async function beginMfa(account: Account, ctx: MfaContext, opts: { newAcc
 
   const choices = devices.map(describeDevice);
   const picked = auth.status === "OTP_REQUIRED" || auth.status === "ASSERTION_REQUIRED";
-  const base = { account, rpId: ctx.rpId, deviceAuthId: auth.id, expiresAt: expiry() };
+  const base = { account, rpId: ctx.rpId, deviceAuthId: auth.id, failures: ctx.failures, expiresAt: expiry() };
 
   if (choices.length === 1) {
     // Only one way to verify, so there is nothing to choose.
@@ -253,6 +294,7 @@ async function startSetup(account: Account, ctx: MfaContext, newAccount: boolean
     methods,
     offered: methods,
     enrolled: [],
+    failures: ctx.failures,
     expiresAt: expiry(),
   };
   return methods.length === 1 ? beginMethod(tx, methods[0]) : show(tx);
@@ -316,7 +358,7 @@ async function afterSetup(tx: MfaTransaction): Promise<FlowResult> {
   const remaining = (tx.methods ?? []).filter((m) => !enrolled.includes(m));
   if (remaining.length === 0) return { done: true, account: tx.account };
 
-  return show({
+  const next = await show({
     account: tx.account,
     rpId: tx.rpId,
     step: "method",
@@ -327,6 +369,7 @@ async function afterSetup(tx: MfaTransaction): Promise<FlowResult> {
     enrolled,
     expiresAt: expiry(),
   });
+  return { ...next, strikes: null }; // a code was just verified, so earlier failures no longer count
 }
 
 // ---- the code step, for both sign-in and set-up ----
@@ -341,12 +384,12 @@ async function submitCode(tx: MfaTransaction, rawCode: string): Promise<FlowResu
     if (!tx.deviceAuthId) return expired("Your sign-in timed out. Start again.");
     const result = await api.checkOtp(tx.deviceAuthId, code);
     if (result === "ok") return { done: true, account: tx.account };
-    if (result === "failed") return expired("Too many wrong codes. Start again.");
-    return show(tx, wrong);
+    if (result === "failed") return strike(tx, "That code didn't work and this sign-in has ended. Start again.", { ended: true });
+    return strike(tx, wrong);
   }
 
   if (!tx.enrollDeviceId) return expired("Your sign-in timed out. Start again.");
-  return (await api.activateDevice(tx.account.id, tx.enrollDeviceId, code)) === "ok" ? afterSetup(tx) : show(tx, wrong);
+  return (await api.activateDevice(tx.account.id, tx.enrollDeviceId, code)) === "ok" ? afterSetup(tx) : strike(tx, wrong);
 }
 
 // ---- the passkey step, for both sign-in and set-up ----
@@ -360,8 +403,8 @@ async function submitPasskey(tx: MfaTransaction, credential: string, origin: str
     if (!tx.deviceAuthId) return expired("Your sign-in timed out. Start again.");
     const result = await api.checkAssertion(tx.deviceAuthId, origin, credential);
     if (result === "ok") return { done: true, account: tx.account };
-    if (result === "failed") return expired("Too many failed attempts. Start again.");
-    return show(tx, "That passkey didn't work. Try again" + ((tx.devices?.length ?? 0) > 1 ? ", or use a different method." : "."));
+    if (result === "failed") return strike(tx, "That passkey didn't work and this sign-in has ended. Start again.", { ended: true });
+    return strike(tx, "That passkey didn't work. Try again" + ((tx.devices?.length ?? 0) > 1 ? ", or use a different method." : "."));
   }
 
   if (!tx.enrollDeviceId) return expired("Your sign-in timed out. Start again.");

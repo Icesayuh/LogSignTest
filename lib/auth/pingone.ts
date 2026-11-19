@@ -1,5 +1,5 @@
 import type { Account, AccountStore, NewAccount } from "./accounts";
-import { AccountStoreError, type StoreErrorField } from "./errors";
+import { AccountDisabledError, AccountStoreError, type StoreErrorField } from "./errors";
 
 // PingOne Directory as the account database. Server-only: the worker app's client secret
 // must never reach the browser, and this file is only imported from server actions.
@@ -93,7 +93,7 @@ export async function call(
 }
 
 // ---- mapping ----
-type PingOneUser = { id: string; username?: string; email?: string; createdAt?: string };
+type PingOneUser = { id: string; username?: string; email?: string; createdAt?: string; enabled?: boolean };
 
 function toAccount(user: PingOneUser, fallbackUsername: string): Account {
   return {
@@ -183,6 +183,9 @@ export const pingOneAccountStore: AccountStore = {
     // Only an explicit OK signs the user in. A wrong password, lockout, no password set,
     // expired or must-change state all count as a failed sign-in.
     if (!r.ok || r.data?.status !== "OK") return null;
+    // Right password, but the user was disabled (e.g. by the MFA lockout): say so instead of letting
+    // them into an MFA step that would fail. Checked after the password so it leaks nothing to guessers.
+    if (user.enabled === false) throw new AccountDisabledError();
     return toAccount(user, username);
   },
 };
