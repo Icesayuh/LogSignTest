@@ -11,6 +11,7 @@ export type MfaStepName =
   | "enroll" // set-up: type the code that was sent (email / text message)
   | "totp" // set-up: scan the QR code, type the code the app shows
   | "passkey-setup" // set-up: create the passkey on this device
+  | "face" // PingOne Recognize: register a face (first time) or check it (every sign-in after)
   | "expired";
 
 // In the order they are offered.
@@ -24,8 +25,20 @@ export type MfaDeviceChoice = {
 
 export type MfaMethodChoice = { id: EnrollMethod; label: string; description: string };
 
+// What the browser's face-capture component needs for one attempt. A new object (new transactionData and,
+// when user authorization is on, a new single-use token) is issued for every attempt.
+export type FaceSession = {
+  mode: "enroll" | "auth";
+  customer: string;
+  username: string;
+  serviceUrl: string;
+  transactionData: string;
+  authorizationToken?: string;
+};
+
 export type MfaView = {
   step: MfaStepName;
+  face?: FaceSession; // step "face"
   devices?: MfaDeviceChoice[]; // step "select"
   methods?: MfaMethodChoice[]; // step "method"
   optional?: boolean; // step "method": already set up once, this is an extra (can be skipped)
