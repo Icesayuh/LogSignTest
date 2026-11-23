@@ -6,10 +6,12 @@ import { call, isPingOneConfigured, readConfig } from "./pingone";
 // Remembers who has registered a face, so a sign-in knows whether to check a face or to register one
 // (someone who closed the tab mid-registration, or an account made before the face check existed).
 //
-// PingOne Directory: a boolean user attribute. Create it once under Directory > Attributes > Add Attribute
-//   (Custom, Boolean, name `keylessEnrolled`; PINGONE_RECOGNIZE_ATTRIBUTE changes the name).
+// PingOne Directory: a string user attribute holding "true". Create it once under Directory > Attributes >
+//   Add Attribute > Declared (name `keylessEnrolled`; PINGONE_RECOGNIZE_ATTRIBUTE changes the name).
+//   PingOne's declared attributes are always strings, so there is no Boolean type to pick.
 // Built-in cookie demo store (no PingOne): a sealed cookie in the browser that registered the account.
 
+const ENROLLED = "true";
 const attribute = () => process.env.PINGONE_RECOGNIZE_ATTRIBUTE || "keylessEnrolled";
 
 const COOKIE = "acp_rcg_enrolled";
@@ -23,7 +25,7 @@ export async function isEnrolled(account: Account): Promise<boolean> {
   }
   const r = await call(readConfig(), `/users/${encodeURIComponent(account.id)}`);
   if (!r.ok) throw new Error(`PingOne user lookup failed (${r.status}) while checking face enrollment.`);
-  return r.data?.[attribute()] === true;
+  return r.data?.[attribute()] === ENROLLED;
 }
 
 export async function markEnrolled(account: Account): Promise<void> {
@@ -43,11 +45,11 @@ export async function markEnrolled(account: Account): Promise<void> {
   const r = await call(readConfig(), `/users/${encodeURIComponent(account.id)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ [attribute()]: true }),
+    body: JSON.stringify({ [attribute()]: ENROLLED }),
   });
   if (!r.ok) {
     throw new Error(
-      `PingOne rejected the "${attribute()}" attribute (${r.status} ${r.data?.code ?? ""}). Create it under Directory > Attributes as a Boolean, or set PINGONE_RECOGNIZE_ATTRIBUTE.`,
+      `PingOne rejected the "${attribute()}" attribute (${r.status} ${r.data?.code ?? ""}). Create it under Directory > Attributes as a Declared (string) attribute, or set PINGONE_RECOGNIZE_ATTRIBUTE.`,
     );
   }
 }
