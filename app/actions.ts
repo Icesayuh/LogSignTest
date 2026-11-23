@@ -7,6 +7,7 @@ import type { Account } from "@/lib/auth/accounts";
 import { cancelMfa, continueMfa, startMfa, type MfaOutcome } from "@/lib/auth/mfa";
 import { MfaFlowError, mfaRequired, type MfaAction } from "@/lib/auth/mfa-flow";
 import type { MfaView } from "@/lib/auth/mfa-types";
+import { beginRecognize, cancelRecognize, continueRecognize, recognizeRequired, type RecognizeAction, type RecognizeOutcome } from "@/lib/auth/recognize-flow";
 import { endSession, startSession } from "@/lib/auth/session";
 import {
   hasErrors,
@@ -32,12 +33,32 @@ function readText(formData: FormData, field: string): string {
   return typeof value === "string" ? value : "";
 }
 
-// The password (or registration) just succeeded. Start the MFA step, or finish signing in when MFA is off.
-async function continueToMfa(account: Account, values: AuthFormState["values"], newAccount = false): Promise<AuthFormState> {
-  if (!mfaRequired()) {
-    await startSession(account);
-    redirect(ACCOUNT_HOME);
+// Everything before the session is done (password, and the verification code when MFA is on). Either a face
+// check comes next (the page shows it in place of the form), or the person is signed in.
+async function finishSignIn(account: Account, values: AuthFormState["values"]): Promise<AuthFormState> {
+  let face: MfaView | null;
+  try {
+    face = await faceCheckFor(account);
+  } catch (error) {
+    console.error("Could not start the face check:", error);
+    return { fieldErrors: {}, formError: "We couldn't start the face check right now. Try again in a moment.", values };
   }
+  if (face) return { fieldErrors: {}, values, mfa: face };
+
+  await startSession(account);
+  redirect(ACCOUNT_HOME);
+}
+
+// null: no face check is configured. Otherwise the screen to register a face or to check it.
+async function faceCheckFor(account: Account): Promise<MfaView | null> {
+  if (!recognizeRequired()) return null;
+  const outcome = await beginRecognize(account);
+  return outcome.done ? null : outcome.view;
+}
+
+// The password (or registration) just succeeded. Start the MFA step, or move on when MFA is off.
+async function continueToMfa(account: Account, values: AuthFormState["values"], newAccount = false): Promise<AuthFormState> {
+  if (!mfaRequired()) return finishSignIn(account, values);
 
   let outcome: MfaOutcome;
   try {
@@ -49,10 +70,7 @@ async function continueToMfa(account: Account, values: AuthFormState["values"], 
     return { fieldErrors: {}, formError, values };
   }
 
-  if (outcome.done) {
-    await startSession(outcome.account);
-    redirect(ACCOUNT_HOME);
-  }
+  if (outcome.done) return finishSignIn(outcome.account, values);
   return { fieldErrors: {}, values, mfa: outcome.view };
 }
 
@@ -136,6 +154,15 @@ export async function mfaStep(previous: MfaView, formData: FormData): Promise<Mf
   }
 
   if (outcome.done) {
+    let face: MfaView | null;
+    try {
+      face = await faceCheckFor(outcome.account);
+    } catch (error) {
+      console.error("Could not start the face check:", error);
+      return { ...previous, error: "We couldn't start the face check right now. Try again in a moment." };
+    }
+    if (face) return face;
+
     await startSession(outcome.account);
     redirect(ACCOUNT_HOME);
   }
@@ -144,6 +171,31 @@ export async function mfaStep(previous: MfaView, formData: FormData): Promise<Mf
 
 export async function cancelMfaStep(): Promise<void> {
   await cancelMfa();
+}
+
+function readRecognizeAction(formData: FormData): RecognizeAction {
+  return formData.has("jwt") ? { type: "result", jwt: readText(formData, "jwt") } : { type: "retry" };
+}
+
+// The face step: the browser's capture finished (a signed result to check) or the person wants another try.
+export async function recognizeStep(previous: MfaView, formData: FormData): Promise<MfaView> {
+  let outcome: RecognizeOutcome;
+  try {
+    outcome = await continueRecognize(readRecognizeAction(formData));
+  } catch (error) {
+    console.error("Face check step failed:", error);
+    return { ...previous, error: "We can't reach the face check right now. Try again in a moment." };
+  }
+
+  if (outcome.done) {
+    await startSession(outcome.account);
+    redirect(ACCOUNT_HOME);
+  }
+  return outcome.view;
+}
+
+export async function cancelRecognizeStep(): Promise<void> {
+  await cancelRecognize();
 }
 
 export async function signOut(): Promise<void> {
