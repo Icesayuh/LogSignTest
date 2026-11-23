@@ -5,6 +5,7 @@ import { cancelMfaStep, mfaStep } from "@/app/actions";
 import type { MfaView } from "@/lib/auth/mfa-types";
 import { createPasskey, passkeysSupported, signWithPasskey } from "@/lib/webauthn";
 import { Field } from "./Field";
+import { RecognizeStep } from "./RecognizeStep";
 import { AlertIcon, ArrowRightIcon } from "./Icons";
 
 function headingFor(view: MfaView): string {
@@ -25,6 +26,8 @@ function headingFor(view: MfaView): string {
       return "Set up your authenticator app";
     case "passkey-setup":
       return "Create a passkey";
+    case "face":
+      return "Face check"; // RecognizeStep draws its own heading
     case "expired":
       return "Start again";
   }
@@ -70,6 +73,9 @@ export function MfaStep({ initial, onRestart }: { initial: MfaView; onRestart: (
       setWaitingForDevice(false);
     }
   }
+
+  // The last verification step hands over to the face check, which has its own state.
+  if (view.step === "face") return <RecognizeStep initial={view} onRestart={onRestart} />;
 
   const busy = pending || waitingForDevice;
   const showSwitch = view.canSwitch && (view.step === "otp" || view.step === "passkey");
