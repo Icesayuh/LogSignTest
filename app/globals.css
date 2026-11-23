@@ -501,3 +501,11 @@ input {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   overflow-wrap: anywhere;
 }
+
+/* Face check: the Recognize SDK draws its own camera view inside this frame. */
+.face-frame {
+  width: 100%;
+  min-height: 280px;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
